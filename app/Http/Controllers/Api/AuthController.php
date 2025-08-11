@@ -2,8 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Auth;
 
 class AuthController extends Controller
 {
@@ -18,7 +19,16 @@ class AuthController extends Controller
             return response()->json(['message' => 'Invalid credentials'], 401);
         }
 
-        $token = auth()->user()->createToken('token')->plainTextToken;
-        return response()->json(['token' => $token]);
+        $user = Auth::user();
+
+        $token = $user->createToken('token')->plainTextToken;
+
+        return response()->json([
+            'token' => $token,
+            'user' => [
+                'name' => $user->name, 
+                'email' => $user->email
+            ]
+        ]);
     }
 }

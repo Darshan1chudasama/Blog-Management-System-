@@ -25,6 +25,3 @@ Route::get('/blog', [BlogController::class, 'index'])->name('blog');
 Route::get('/editBlog/{id}', function ($id) {
     return view('editBlog'); // Blade file for edit blog page
 });
-
-
-Route::get('/search', [BlogController::class, 'search'])->name('search');

@@ -225,7 +225,8 @@
         }
 
         .pagination {
-            margin-top: 20px;
+            margin-top: 4px;
+
         }
 
         .page-btn {
@@ -240,6 +241,36 @@
             background: #007bff;
             color: white;
         }
+
+
+        #filterSelect {
+            padding: 8px 14px;
+            font-size: 14px;
+            font-family: Arial, sans-serif;
+            color: #333;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            outline: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            appearance: none;
+            background-image: url("data:image/svg+xml;utf8,<svg fill='%23666' height='12' viewBox='0 0 24 24' width='12' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            background-size: 12px;
+        }
+
+        /* Hover effect */
+        #filterSelect:hover {
+            border-color: #888;
+        }
+
+        /* Focus effect */
+        #filterSelect:focus {
+            border-color: #4a90e2;
+            box-shadow: 0 0 5px rgba(74, 144, 226, 0.4);
+        }
     </style>
 </head>
 
@@ -250,10 +281,12 @@
             <i class="search-icon fas fa-search"></i>
             <input type="text" id="searchBar" class="form-control" placeholder="Search blogs...">
         </div>
+
         <ul>
             <li><a href="#">Home</a></li>
             <li><a href="/addBlog">Add Blog</a></li>
         </ul>
+        <div id="welcomeUser"></div>
     </div>
     <header>
         <h1>Blog Management System</h1>
@@ -264,6 +297,11 @@
     <div class="container">
 
         <div class="actions">
+            <select id="filterSelect">
+                <option value="">Sort By</option>
+                <option value="latest">Latest Blogs</option>
+                <option value="most_liked">Most Liked</option>
+            </select>
             <button style="margin: 20px" onclick="window.location.href='/addBlog'">➕ Add Blog</button>
 
         </div>
@@ -279,18 +317,36 @@
 </html>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script>
-    //loadData
+    //pangination of page
+    function renderpagination(pagination) {
+        let html = `<div class="pagination">`;
+
+        for (let page = 1; page <= pagination.last_page; page++) {
+            html += `
+        <button 
+            class="page-btn ${pagination.current_page === page ? 'active' : ''}" 
+            data-page="${page}">
+            ${page}
+        </button>`;
+        }
+
+        html += `</div>`;
+        return html;
+    }
+    // loaddata
     function loadData(page = 1) {
         const token = localStorage.getItem('token');
+        const search = document.getElementById('searchBar').value;
+        const filter = document.getElementById('filterSelect')?.value || '';
 
-        fetch(`http://127.0.0.1:8000/api/get-blogs?page=${page}`, {
+        fetch(`/api/get-blogs?page=${page}&search=${search}&filter=${filter}`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json'
                 }
             })
-            .then(response => response.json())
+            .then(res => res.json())
             .then(data => {
                 if (data.message === "Unauthenticated.") {
                     alert("Please login to view blogs.");
@@ -299,10 +355,10 @@
                 }
 
                 if (!data || !data.data || !data.data.blogs) {
-                    throw new Error('Invalid API response structure');
+                    throw new Error('Invalid API response');
                 }
 
-                const blogs = data.data.blogs;
+                const blogs = data.data.blogs.data ?? data.data.blogs;
                 const pagination = data.data.pagination;
                 const blogListContainer = document.getElementById('blogList');
 
@@ -323,19 +379,19 @@
                             data-blog-id="${blog.id}">
                             ❤️ <span class="likes-count">${likesCount}</span>
                         </button>
-                        <a href="/editBlog/${blog.id}"><button type="button" class="edit-btn">✏️ Edit</button></a>
+                        <a href="/editBlog/${blog.id}">
+                            <button type="button" class="edit-btn">✏️ Edit</button>
+                        </a>
                         <button onclick="deleteBlog(${blog.id})" class="delete-btn">🗑️ Delete</button>
                     </div>
                 </div>
             `;
                 });
 
-                // Add pagination buttons below blogs
                 html += renderpagination(pagination);
 
                 blogListContainer.innerHTML = html;
 
-                // ✅ Attach event listeners after rendering
                 document.querySelectorAll('.page-btn').forEach(btn => {
                     btn.addEventListener('click', function() {
                         const selectedPage = this.getAttribute('data-page');
@@ -350,68 +406,16 @@
             });
     }
 
-    function renderpagination(pagination) {
-        let html = `<div class="pagination">`;
-
-        for (let page = 1; page <= pagination.last_page; page++) {
-            html += `
-            <button 
-                class="page-btn ${pagination.current_page === page ? 'active' : ''}" 
-                data-page="${page}">
-                ${page}
-            </button>`;
-        }
-
-        html += `</div>`;
-        return html;
-    }
-
+    // First load
     loadData();
 
+    // Real-time search
+    document.getElementById('searchBar').addEventListener('input', () => loadData());
 
+    // Filter change
+    document.getElementById('filterSelect')?.addEventListener('change', () => loadData());
 
-    //update Data show in flid
-    document.addEventListener('DOMContentLoaded', async function() {
-        const blogId = getBlogIdFromUrl();
-        const token = localStorage.getItem('token');
-        console.log("📦 Retrieved Token:", token);
-
-        if (!blogId) {
-            alert("Blog ID not found in URL");
-            return;
-        }
-        console.log("📦 Blog ID:", blogId);
-
-        try {
-            const res = await fetch(`/api/get-blogs/${blogId}`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Accept': 'application/json'
-                }
-            });
-
-            const data = await res.json();
-            if (res.ok && data.data.blog.length > 0) {
-                const blog = data.data.blog[0];
-                document.getElementById('id').value = blog.id;
-                document.getElementById('title').value = blog.title;
-                document.getElementById('description').value = blog.description;
-                document.getElementById('currentImage').src = `/uploads/${blog.image}`;
-            } else {
-                alert("Blog not found");
-            }
-        } catch (err) {
-            console.error("Error fetching blog:", err);
-        }
-    });
-
-    // Extract blog ID from the URL (/editBlog/{id})
-    function getBlogIdFromUrl() {
-        const parts = window.location.pathname.split('/');
-        return parts[parts.length - 1] || null;
-    }
-
+    
 
     //delete
     async function deleteBlog(blogId) {
@@ -449,8 +453,7 @@
         }
     }
 
-
-    //link
+    //like
     $(document).on('click', '.like-btn', function() {
         let blogId = $(this).data('blog-id');
         let btn = $(this);
@@ -464,45 +467,61 @@
             },
             success: function(response) {
                 btn.find('.likes-count').text(response.likes_count);
-                btn.toggleClass('liked', response.is_liked_by_user);
+                if (response.is_liked_by_user) {
+                    btn.addClass('liked');
+                } else {
+                    btn.removeClass('liked');
+                }
             }
         });
     });
 
 
+
     //search bar
     document.querySelector("#searchBar").addEventListener("keyup", function() {
-        let query = this.value;
+        let query = this.value.trim();
+        const token = localStorage.getItem('token');
 
-        fetch(`/search?query=${encodeURIComponent(query)}`)
+        fetch(`/api/get-blogs?search=${encodeURIComponent(query)}`, {
+                headers: {
+                    'Accept': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            })
             .then(response => response.json())
-            .then(data => {
+            .then(res => {
+                if (!res.status || !res.data || !res.data.blogs) {
+                    document.getElementById("blogList").innerHTML = `<p>No blogs found.</p>`;
+                    return;
+                }
+
+                let blogs = res.data.blogs; // ✅ Correct data path
                 let html = '';
-                data.forEach(blog => { // <-- use data instead of blog
+
+                blogs.forEach(blog => {
+                    let likedClass = blog.isLikedByUser ? 'liked' : '';
+                    let likesCount = blog.likes_count ?? 0;
+
                     html += `
-                    <div class="blog-card">
-                        <img src="/uploads/${blog.image}" alt="Blog Image">
-                        <h3>${blog.title}</h3>
-                        <p>${blog.description}</p>
-                        <div class="blog-actions">
-                            <button type="button"
-                                class="like-btn ${blog.is_liked_by_user ? 'liked' : ''}"
-                                data-blog-id="${blog.id}">
-                                <svg class="heart-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                                    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 
-                                    2 5.42 4.42 3 7.5 3
-                                    c1.74 0 3.41.81 4.5 2.09 
-                                    C13.09 3.81 14.76 3 16.5 3
-                                    19.58 3 22 5.42 22 8.5 
-                                    c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                                </svg>
-                                <span class="likes-count">${blog.likes_count ?? 0}</span>
-                            </button>
-                            <a href="/editBlog/${blog.id}"><button type="button" class="edit-btn">✏️ Edit</button></a>
-                            <button onclick="deleteBlog(${blog.id})" class="delete-btn">🗑️ Delete</button>
-                        </div>
-                    </div>`;
+            <div class="blog-card">
+                <img src="/uploads/${blog.image}" alt="Blog Image">
+                <h3>${blog.title}</h3>
+                <p>${blog.description}</p>
+                <div class="blog-actions">
+                    <button type="button"
+                        class="like-btn ${likedClass}"
+                        data-blog-id="${blog.id}">
+                        ❤️ <span class="likes-count">${likesCount}</span>
+                    </button>
+                    <a href="/editBlog/${blog.id}">
+                        <button type="button" class="edit-btn">✏️ Edit</button>
+                    </a>
+                    <button onclick="deleteBlog(${blog.id})" class="delete-btn">🗑️ Delete</button>
+                </div>
+            </div>`;
                 });
+
                 document.getElementById("blogList").innerHTML = html;
             })
             .catch(error => {
@@ -510,5 +529,13 @@
                 document.getElementById('blogList').innerHTML =
                     `<p style="color:red;">Error loading blogs: ${error.message}</p>`;
             });
+    });
+
+    // show user name 
+    document.addEventListener("DOMContentLoaded", function() {
+        const name = localStorage.getItem('name');
+        if (name) {
+            document.getElementById("welcomeUser").innerText = `Welcome, ${name} 👋`;
+        }
     });
 </script>

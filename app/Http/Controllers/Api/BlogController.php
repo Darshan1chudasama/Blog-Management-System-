@@ -9,13 +9,13 @@ use Illuminate\Support\Facades\Validator;
 
 class BlogController extends Controller
 {
+    //blog show homepage
     public function index()
     {
-        $blogs = Blog::all(); // or with likes: Blog::with('likes')->get();
+        $blogs = Blog::with('likes')->get();
         return view('blog', compact('blogs'));
-
-        
     }
+    // blog store
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -42,7 +42,8 @@ class BlogController extends Controller
 
         return response()->json(['message' => 'Blog created successfully'], 201);
     }
-    public function show(string $id)
+
+    public function show($id)
     {
         $blog = Blog::find($id);
 
@@ -52,10 +53,13 @@ class BlogController extends Controller
 
         return response()->json([
             'data' => [
-                'blog' => [$blog] // keeping same array format as your existing code
+                'blog' => [$blog]  // wrap in array
             ]
         ]);
     }
+
+
+    // blog update
     public function update(Request $request, string $id)
     {
 
@@ -107,6 +111,8 @@ class BlogController extends Controller
             'data' => $blog
         ], 200);
     }
+
+    // blog delete
     public function destroy(string $id)
     {
         // Find blog post by id
@@ -128,72 +134,102 @@ class BlogController extends Controller
         return response()->json(['message' => 'Your post has been removed'], 200);
     }
 
+    // show add blog page
     public  function addBlog()
     {
         return view('addBlog');
     }
+
+    // show edit blog page
     public function editPage()
     {
         return view('editBlog');
     }
-    public function getBlog()
+
+    // blog list 
+    public function getBlog(Request $request)
     {
-        $userId = auth()->id();
+        $user = $request->user();
 
-        $blogs = Blog::latest()->paginate(3);
+        $query = Blog::withCount('likes')
+            ->with(['likes' => function ($q) use ($user) {
+                $q->where('user_id', $user->id);
+            }]);
 
-        $blogs->getCollection()->transform(function ($blog) use ($userId) {
-            $blog->isLikedByUser = $blog->isLikedByUser($userId);
-            $blog->likesCount = $blog->likeCount();
+        // 🔍 Search filter
+        if ($request->has('search') && $request->search !== '') {
+            $query->where(function ($q) use ($request) {
+                $q->where('title', 'like', '%' . $request->search . '%')
+                    ->orWhere('description', 'like', '%' . $request->search . '%');
+            });
+        }
+
+        // 📌 Sorting filter
+        if ($request->has('filter')) {
+            if ($request->filter === 'most_liked') {
+                $query->orderBy('likes_count', 'desc');
+            } elseif ($request->filter === 'latest') {
+                $query->orderBy('created_at', 'desc');
+            }
+        } else {
+            $query->orderBy('created_at', 'desc');
+        }
+
+        // 📄 Pagination
+        $blogs = $query->paginate(3);
+
+        // 🎯 Transform data
+        $blogs->getCollection()->transform(function ($blog) use ($user) {
+            $blog->isLikedByUser = $blog->likes->isNotEmpty();
+            $blog->likesCount = $blog->likes_count; // camelCase for frontend
+            unset($blog->likes, $blog->likes_count); // Remove unused keys
             return $blog;
         });
 
         return response()->json([
+            'status' => true,
+            'message' => 'Blogs fetched successfully',
             'data' => [
                 'blogs' => $blogs->items(),
                 'pagination' => [
                     'current_page' => $blogs->currentPage(),
                     'last_page' => $blogs->lastPage(),
-                    'total' => $blogs->total(),
+                    'per_page' => $blogs->perPage(),
+                    'total' => $blogs->total()
                 ]
             ]
         ]);
     }
-    public function toggleLike($id)
-    {
-        $blog = Blog::find($id);
-        $user = auth()->user();
 
-        if ($blog->likes()->where('user_id', $user->id)->exists()) {
+    // blog like
+    public function toggleLike($id, Request $request)
+    {
+        $user = $request->user();
+        $blog = Blog::find($id);
+
+        $alreadyLiked = $blog->likes()->where('user_id', $user->id)->exists();
+
+        if ($alreadyLiked) {
+            // Unlike
             $blog->likes()->where('user_id', $user->id)->delete();
+            $isLiked = false;
+            $message = 'Blog unliked successfully';
         } else {
-            $blog->likes()->create(['user_id' => $user->id]);
+            // Like
+            $blog->likes()->create([
+                'user_id' => $user->id
+            ]);
+            $isLiked = true;
+            $message = 'Blog liked successfully';
         }
 
+        $blog->loadCount('likes');
+
         return response()->json([
-            'likes_count' => $blog->likeCount(),
-            'is_liked_by_user' => $blog->isLikedByUser($user->id)
+            'status' => true,
+            'message' => $message,
+            'likes_count' => $blog->likes_count,
+            'is_liked_by_user' => $isLiked
         ]);
-    }
-
-
-    public function search(Request $request)
-    {
-        $query = $request->input('query');
-
-        $posts = Blog::withCount('likes') // get total likes
-            ->with(['likes' => function ($q) {
-                $q->where('user_id', auth()->id());
-            }])
-            ->where('title', 'LIKE', "%{$query}%")
-            ->orWhere('description', 'LIKE', "%{$query}%")
-            ->get()
-            ->map(function ($blog) {
-                $blog->is_liked_by_user = $blog->likes->isNotEmpty();
-                unset($blog->likes); // clean unnecessary data
-                return $blog;
-            });
-
-        return response()->json($posts);
     }
 }

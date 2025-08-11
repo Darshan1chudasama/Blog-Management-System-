@@ -107,7 +107,14 @@
                 password: password
             }),
             success: function(response) {
+                // ✅ Token save
                 localStorage.setItem('token', response.token);
+
+                // ✅ Name save (Assuming API returns user object)
+                if (response.user && response.user.name) {
+                    localStorage.setItem('name', response.user.name);
+                }
+
                 swal("Success!", "You have logged in successfully!", "success")
                     .then(() => {
                         window.location.href = "http://127.0.0.1:8000/blog";
